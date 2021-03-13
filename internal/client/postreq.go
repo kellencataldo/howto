@@ -10,7 +10,7 @@ type PostOpts struct {
 	Title string
 }
 
-func ProcessPost(opts HowtoOpts, post PostOpts) error {
+func ProcessPost(post PostOpts) error {
 	fmt.Println(post.Title)
 	return nil
 }

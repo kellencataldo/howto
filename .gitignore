@@ -15,3 +15,8 @@
 # vendor/
 
 cmd/log.txt
+bin/
+certs/
+scripts/serverht
+cmd/howto
+howto

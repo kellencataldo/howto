@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/akamensky/argparse"
 	"github.com/kellencataldo/howto/internal/client"
+	log "github.com/sirupsen/logrus"
 	"os"
 	"strings"
 	"unicode/utf8"
@@ -21,45 +22,108 @@ func flagsPresent(args []string) bool {
 	return false
 }
 
+func PopulateMissingConnFields(conn *client.ConnectionInfo) error {
+
+	// @TODO: check environment variables here, if one is not found return error
+	/*
+		type ConnectionInfo struct {
+			ServerAddress string
+			ServerPort int
+			ClientCert os.File
+			ClientKey  os.File
+			ServerCert os.File
+	*/
+
+	return nil
+}
+
 func main() {
 
+	log.SetOutput(os.Stdout)
+	// @TODO make this customizable
+	// ie: var mySelector *string = parser.Selector("d", "debug-level", []string{"INFO", "DEBUG", "WARN"}, ...)
+	log.SetLevel(log.WarnLevel)
+
 	if len(os.Args) > 1 && !flagsPresent(os.Args[1:]) {
-		htOpts := client.HowtoOpts{Address: ""}
-		get := client.GetOpts{Query: strings.Join(os.Args[1:], " ")}
-		client.ProcessGet(htOpts, get)
+
+		conn := client.ConnectionInfo{}
+		if err := PopulateMissingConnFields(&conn); err != nil {
+			log.Fatalln(err)
+		} else if err = client.InitializeConnectionInfo(conn); err != nil {
+			log.Fatalln(err)
+		}
+
+		client.ProcessGet(client.GetOpts{Query: strings.Join(os.Args[1:], " ")})
 	}
 
 	parser := argparse.NewParser("howto", "takes query string and returns a how-to article")
-	a := parser.String("a", "address", &argparse.Options{Required: false, Help: "address of the howto server, will also search environment variable HOWTO_ADDR"})
+	address := parser.String("a", "address", &argparse.Options{Required: false, Help: "address of the howto server, will also search environment variable HOWTO_ADDR"})
+	port := parser.Int("p", "port", &argparse.Options{Required: false, Help: "port used to connect to server, will also seach environment variable HOWTO_PORT"})
+	cert := parser.File("c", "cert", os.O_RDONLY, 0400, &argparse.Options{Required: false, Help: "client certificate, will also search environment variable HOWTO_CERT"})
+	key := parser.File("k", "key", os.O_RDONLY, 0400, &argparse.Options{Required: false, Help: "client key, will also search environment variable HOWTO_KEY"})
+	srvCert := parser.File("s", "srvcert", os.O_RDONLY, 0400, &argparse.Options{Required: false, Help: "server cert, will also search environment variable HOWTO_SRV_CERT"})
 
 	getCmd := parser.NewCommand("get", "gets articles from the server")
-	q := getCmd.String("q", "query", &argparse.Options{Required: true, Help: "search string to use"})
+	query := getCmd.String("q", "query", &argparse.Options{Required: true, Help: "search string to use"})
 
 	postCmd := parser.NewCommand("post", "posts an article to the server")
-	f := postCmd.File("f", "file", os.O_RDONLY, 0400, &argparse.Options{Required: true, Help: "file to post"})
-	t := postCmd.String("t", "title", &argparse.Options{Required: true, Help: "title of the article, will be matched against during queries"})
+	file := postCmd.File("f", "file", os.O_RDONLY, 0400, &argparse.Options{Required: true, Help: "file to post"})
+	title := postCmd.String("t", "title", &argparse.Options{Required: true, Help: "title of the article, will be matched against during queries"})
 
 	err := parser.Parse(os.Args)
 	if nil != err {
-		fmt.Println(parser.Usage(err))
-		os.Exit(1)
+		log.Fatalln(parser.Usage(err))
 	}
 
-	htOpts := client.HowtoOpts{Address: *a}
+	/*
+		type ConnectionInfo struct {
+			ServerAddress string
+			ServerPort int
+			ClientCert os.File
+			ClientKey  os.File
+			ServerCert os.File
+	*/
+
+	conn := client.ConnectionInfo{}
+	if *address != "" {
+		conn.ServerAddress = *address
+	}
+
+	if *port != 0 {
+		conn.ServerPort = *port
+	}
+
+	if cert != nil {
+		conn.ClientCert = cert
+	}
+
+	if key != nil {
+		conn.ClientKey = key
+	}
+
+	if srvCert != nil {
+		conn.ServerCert = srvCert
+	}
+
+	if err := PopulateMissingConnFields(&conn); err != nil {
+		log.Fatalln(err)
+	} else if err = client.InitializeConnectionInfo(conn); err != nil {
+		log.Fatalln(err)
+	}
+
+	// kellen, initialize global variables here.
 	if getCmd.Happened() {
-		get := client.GetOpts{Query: *q}
-		err = client.ProcessGet(htOpts, get)
+		get := client.GetOpts{Query: *query}
+		err = client.ProcessGet(get)
 	} else if postCmd.Happened() {
-		post := client.PostOpts{File: *f, Title: *t}
-		err = client.ProcessPost(htOpts, post)
+		post := client.PostOpts{File: *file, Title: *title}
+		err = client.ProcessPost(post)
 	} else {
-		fmt.Print(parser.Usage(fmt.Sprintf("Unable to process request: %s", strings.Join(os.Args, " "))))
-		os.Exit(1)
+		log.Fatalln(parser.Usage(fmt.Sprintf("Unable to process request: %s", strings.Join(os.Args, " "))))
 	}
 
 	if nil != err {
-		fmt.Println(err)
-		os.Exit(1)
+		log.Fatalln(err)
 	}
 
 	os.Exit(0)
